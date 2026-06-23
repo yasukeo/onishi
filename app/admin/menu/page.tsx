@@ -1,12 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Pencil, Trash2, Check, X, Loader2, EyeOff, Eye } from "lucide-react";
+import { Plus, Pencil, Trash2, Check, X, Loader2, EyeOff, Eye, ImagePlus, ChevronUp, ChevronDown, FolderPlus } from "lucide-react";
 import { useMenu } from "@/lib/hooks/use-menu";
 import { useAuth } from "@/lib/auth";
-import { patchMenuItem, addMenuItem, removeMenuItem } from "@/lib/data/api";
+import {
+  patchMenuItem, addMenuItem, removeMenuItem,
+  addCategory, updateCategory, removeCategory, uploadPhoto,
+} from "@/lib/data/api";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import type { MenuItem } from "@/lib/types";
+import type { MenuItem, CategoryWithItems } from "@/lib/types";
 import { Input, Textarea, Label } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { formatDh, cn } from "@/lib/utils";
@@ -42,6 +45,17 @@ export default function AdminMenuPage() {
     setBusy(false);
   }
 
+  async function moveCategory(cat: CategoryWithItems, dir: -1 | 1) {
+    const idx = menu.findIndex((c) => c.id === cat.id);
+    const other = menu[idx + dir];
+    if (!other) return;
+    setBusy(true);
+    await updateCategory(cat.id, { ordre_affichage: other.ordre_affichage });
+    await updateCategory(other.id, { ordre_affichage: cat.ordre_affichage });
+    await reload();
+    setBusy(false);
+  }
+
   return (
     <div className="mx-auto max-w-4xl p-4 sm:p-6">
       <header className="mb-6">
@@ -55,6 +69,17 @@ export default function AdminMenuPage() {
           </p>
         )}
       </header>
+
+      {!loading && (
+        <CategoriesPanel
+          menu={menu}
+          busy={busy}
+          onAdd={async (nom) => { setBusy(true); await addCategory(nom, menu.length + 1); await reload(); setBusy(false); }}
+          onRename={async (id, nom) => { setBusy(true); await updateCategory(id, { nom }); await reload(); setBusy(false); }}
+          onRemove={async (id) => { if (confirm("Supprimer cette catégorie et ses plats ?")) { setBusy(true); await removeCategory(id); await reload(); setBusy(false); } }}
+          onMove={moveCategory}
+        />
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-20 text-ink-soft">
@@ -88,7 +113,7 @@ export default function AdminMenuPage() {
                       nom: data.nom,
                       description: data.description,
                       prix: data.prix,
-                      photo_url: null,
+                      photo_url: data.photo_url,
                       disponible: true,
                       options: [],
                       ordre_affichage: cat.items.length + 1,
@@ -119,6 +144,12 @@ export default function AdminMenuPage() {
                     </li>
                   ) : (
                     <li key={item.id} className="flex items-center gap-3 p-3">
+                      <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-[var(--radius-sm)] bg-sand">
+                        {item.photo_url && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={item.photo_url} alt="" className="h-full w-full object-cover" />
+                        )}
+                      </div>
                       <div className="min-w-0 flex-1">
                         <p className={cn("font-medium", item.disponible ? "text-ink" : "text-ink-soft line-through")}>
                           {item.nom}
@@ -173,39 +204,79 @@ function ItemForm({
 }: {
   initial?: MenuItem;
   categoryId: string;
-  onSave: (data: { nom: string; prix: number; description: string | null }) => void;
+  onSave: (data: { nom: string; prix: number; description: string | null; photo_url: string | null }) => void;
   onCancel: () => void;
 }) {
   const [nom, setNom] = useState(initial?.nom ?? "");
   const [prix, setPrix] = useState(initial?.prix?.toString() ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
+  const [photo, setPhoto] = useState<string | null>(initial?.photo_url ?? null);
+  const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const valid = nom.trim().length > 0 && Number(prix) >= 0 && prix !== "";
 
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      setPhoto(await uploadPhoto(file));
+    } catch {
+      alert("Échec de l'upload.");
+    }
+    setUploading(false);
+  }
+
   return (
     <div className="mb-3 rounded-[var(--radius-lg)] border border-terracotta/40 bg-terracotta/5 p-4">
-      <div className="grid gap-3 sm:grid-cols-[1fr_120px]">
-        <div>
-          <Label>Nom</Label>
-          <Input value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Nom du plat" />
+      <div className="flex gap-4">
+        <div className="shrink-0">
+          <div className="relative h-24 w-24 overflow-hidden rounded-[var(--radius)] bg-sand">
+            {photo && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={photo} alt="" className="h-full w-full object-cover" />
+            )}
+            {uploading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-charcoal/50">
+                <Loader2 className="h-5 w-5 animate-spin text-cream" />
+              </div>
+            )}
+          </div>
+          <label className="mt-2 flex cursor-pointer items-center justify-center gap-1 rounded-full border border-sand-deep bg-white px-2 py-1.5 text-xs font-medium text-ink hover:bg-sand">
+            <ImagePlus className="h-3.5 w-3.5" /> Photo
+            <input type="file" accept="image/*" className="hidden" onChange={onFile} />
+          </label>
+          {photo && (
+            <button onClick={() => setPhoto(null)} className="mt-1 w-full text-center text-[0.65rem] text-ink-soft hover:text-red-600">Retirer</button>
+          )}
         </div>
-        <div>
-          <Label>Prix (dh)</Label>
-          <Input value={prix} onChange={(e) => setPrix(e.target.value)} inputMode="decimal" placeholder="0" />
+
+        <div className="flex-1">
+          <div className="grid gap-3 sm:grid-cols-[1fr_110px]">
+            <div>
+              <Label>Nom</Label>
+              <Input value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Nom du plat" />
+            </div>
+            <div>
+              <Label>Prix (dh)</Label>
+              <Input value={prix} onChange={(e) => setPrix(e.target.value)} inputMode="decimal" placeholder="0" />
+            </div>
+          </div>
+          <div className="mt-3">
+            <Label>Description</Label>
+            <Textarea value={description ?? ""} onChange={(e) => setDescription(e.target.value)} placeholder="Ingrédients…" />
+          </div>
         </div>
       </div>
-      <div className="mt-3">
-        <Label>Description</Label>
-        <Textarea value={description ?? ""} onChange={(e) => setDescription(e.target.value)} placeholder="Ingrédients…" />
-      </div>
+
       <div className="mt-3 flex gap-2">
         <Button
           size="sm"
-          disabled={!valid || saving}
+          disabled={!valid || saving || uploading}
           onClick={() => {
             setSaving(true);
-            onSave({ nom: nom.trim(), prix: Number(prix), description: description?.trim() || null });
+            onSave({ nom: nom.trim(), prix: Number(prix), description: description?.trim() || null, photo_url: photo });
           }}
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Enregistrer
@@ -214,6 +285,61 @@ function ItemForm({
           <X className="h-4 w-4" /> Annuler
         </Button>
       </div>
+    </div>
+  );
+}
+
+function CategoriesPanel({
+  menu, busy, onAdd, onRename, onRemove, onMove,
+}: {
+  menu: CategoryWithItems[];
+  busy: boolean;
+  onAdd: (nom: string) => void;
+  onRename: (id: string, nom: string) => void;
+  onRemove: (id: string) => void;
+  onMove: (cat: CategoryWithItems, dir: -1 | 1) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [nouvelle, setNouvelle] = useState("");
+
+  return (
+    <div className="mb-8 rounded-[var(--radius-lg)] border border-sand-deep bg-white p-4">
+      <button onClick={() => setOpen((v) => !v)} className="flex w-full items-center justify-between">
+        <span className="font-serif text-xl text-ink">Catégories ({menu.length})</span>
+        <span className="text-sm text-terracotta">{open ? "Masquer" : "Gérer"}</span>
+      </button>
+
+      {open && (
+        <div className="mt-4 space-y-2">
+          {menu.map((cat, i) => (
+            <div key={cat.id} className="flex items-center gap-2">
+              <div className="flex flex-col">
+                <button onClick={() => onMove(cat, -1)} disabled={busy || i === 0} className="text-ink-soft hover:text-ink disabled:opacity-30"><ChevronUp className="h-4 w-4" /></button>
+                <button onClick={() => onMove(cat, 1)} disabled={busy || i === menu.length - 1} className="text-ink-soft hover:text-ink disabled:opacity-30"><ChevronDown className="h-4 w-4" /></button>
+              </div>
+              <Input
+                defaultValue={cat.nom}
+                onBlur={(e) => { if (e.target.value.trim() && e.target.value !== cat.nom) onRename(cat.id, e.target.value.trim()); }}
+                className="flex-1"
+              />
+              <span className="w-8 text-center text-xs text-ink-soft">{cat.items.length}</span>
+              <button onClick={() => onRemove(cat.id)} disabled={busy} className="inline-flex h-10 w-10 items-center justify-center rounded-[var(--radius)] text-ink-soft hover:bg-red-50 hover:text-red-600" aria-label="Supprimer la catégorie">
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+
+          <div className="flex gap-2 pt-2">
+            <div className="relative flex-1">
+              <FolderPlus className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft/50" />
+              <Input value={nouvelle} onChange={(e) => setNouvelle(e.target.value)} placeholder="Nouvelle catégorie" className="pl-9" />
+            </div>
+            <Button size="md" disabled={!nouvelle.trim() || busy} onClick={() => { onAdd(nouvelle.trim()); setNouvelle(""); }}>
+              <Plus className="h-4 w-4" /> Ajouter
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

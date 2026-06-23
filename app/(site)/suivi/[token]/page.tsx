@@ -1,10 +1,13 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, Clock, Loader2, CheckCircle2, XCircle, Copy, Phone } from "lucide-react";
-import { getOrderByToken, subscribeOrders } from "@/lib/data/api";
-import type { OrderPublic, OrderStatus, OrderType } from "@/lib/types";
+import { Check, Clock, Loader2, CheckCircle2, XCircle, Copy, Phone, Timer } from "lucide-react";
+import { getOrderByToken, subscribeOrders, addReview, getEtaSettings } from "@/lib/data/api";
+import { DEFAULT_ETA } from "@/lib/data/settings-default";
+import type { EtaSettings, OrderPublic, OrderStatus, OrderType } from "@/lib/types";
+import { Stars } from "@/components/ui/stars";
+import { Skeleton } from "@/components/ui/skeleton";
 import { formatDh, formatHeure, cn } from "@/lib/utils";
 
 const STEPS: { statut: OrderStatus; label: (t: OrderType) => string }[] = [
@@ -23,6 +26,31 @@ export default function SuiviPage({ params }: { params: Promise<{ token: string 
   const [order, setOrder] = useState<OrderPublic | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [note, setNote] = useState(0);
+  const [commentaire, setCommentaire] = useState("");
+  const [reviewSent, setReviewSent] = useState(false);
+  const [eta, setEta] = useState<EtaSettings>(DEFAULT_ETA);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    getEtaSettings().then(setEta);
+    const t = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Heure d'arrivée estimée : création + préparation (+ livraison si applicable).
+  const etaInfo = useMemo(() => {
+    if (!order || order.statut === "livree" || order.statut === "annulee") return null;
+    const minutes = eta.preparation_min + (order.type === "livraison" ? eta.livraison_min : 0);
+    const target = new Date(order.creee_le).getTime() + minutes * 60000;
+    return { target, remaining: Math.round((target - now) / 60000) };
+  }, [order, eta, now]);
+
+  async function submitReview() {
+    if (note < 1) return;
+    const ok = await addReview(token, note, commentaire.trim() || null);
+    if (ok) setReviewSent(true);
+  }
 
   const load = useCallback(async () => {
     const o = await getOrderByToken(token);
@@ -43,8 +71,21 @@ export default function SuiviPage({ params }: { params: Promise<{ token: string 
 
   if (loading) {
     return (
-      <div className="mx-auto flex max-w-2xl items-center justify-center px-6 py-32 text-ink-soft">
-        <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Chargement de votre commande…
+      <div className="mx-auto max-w-2xl space-y-6 px-4 py-12 sm:px-6" aria-busy>
+        <div className="rounded-[var(--radius-xl)] border border-sand-deep bg-white/70 p-6 text-center">
+          <Skeleton className="mx-auto h-14 w-14 rounded-full" />
+          <Skeleton className="mx-auto mt-4 h-8 w-48" />
+          <Skeleton className="mx-auto mt-2 h-4 w-64" />
+        </div>
+        <div className="space-y-4 rounded-[var(--radius-xl)] border border-sand-deep bg-white/70 p-6">
+          <Skeleton className="h-6 w-40" />
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-4">
+              <Skeleton className="h-8 w-8 rounded-full" />
+              <Skeleton className="h-4 w-36" />
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -103,6 +144,29 @@ export default function SuiviPage({ params }: { params: Promise<{ token: string 
             </span>
           )}
         </div>
+
+        {!annulee && etaInfo && (
+          <div className="mb-5 flex items-center gap-3 rounded-[var(--radius-lg)] border border-terracotta/30 bg-terracotta/5 p-4">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-terracotta/15 text-terracotta">
+              <Timer className="h-5 w-5" />
+            </span>
+            <div>
+              <p className="text-sm text-ink-soft">
+                {order.statut === "en_livraison"
+                  ? order.type === "emporter" ? "Prête au retrait" : "Arrivée estimée"
+                  : order.type === "emporter" ? "Prête au retrait vers" : "Livraison estimée vers"}
+              </p>
+              <p className="font-serif text-2xl leading-tight text-ink">
+                {etaInfo.remaining > 1
+                  ? `dans ~${etaInfo.remaining} min`
+                  : "d'un instant à l'autre"}
+                <span className="ml-2 text-base font-sans text-ink-soft">
+                  (~{formatHeure(new Date(etaInfo.target))})
+                </span>
+              </p>
+            </div>
+          </div>
+        )}
 
         {annulee ? (
           <div className="flex items-center gap-3 rounded-lg bg-red-50 p-4 text-red-700">
@@ -182,6 +246,12 @@ export default function SuiviPage({ params }: { params: Promise<{ token: string 
             <dt className="text-ink-soft">Sous-total</dt>
             <dd className="text-ink">{formatDh(order.sous_total)}</dd>
           </div>
+          {order.remise > 0 && (
+            <div className="flex justify-between text-matcha">
+              <dt>Remise</dt>
+              <dd>-{formatDh(order.remise)}</dd>
+            </div>
+          )}
           {order.frais_livraison > 0 && (
             <div className="flex justify-between">
               <dt className="text-ink-soft">Livraison</dt>
@@ -198,6 +268,39 @@ export default function SuiviPage({ params }: { params: Promise<{ token: string 
           numéro de commande #{order.numero} à portée de main.
         </p>
       </div>
+
+      {/* Avis client — disponible une fois la commande livrée */}
+      {order.statut === "livree" && (
+        <div className="mt-6 rounded-[var(--radius-xl)] border border-sand-deep bg-white/70 p-6 text-center">
+          {reviewSent ? (
+            <>
+              <CheckCircle2 className="mx-auto h-8 w-8 text-matcha" />
+              <h2 className="mt-2 font-serif text-xl text-ink">Merci pour votre avis !</h2>
+              <p className="text-sm text-ink-soft">Votre retour nous aide à nous améliorer.</p>
+            </>
+          ) : (
+            <>
+              <h2 className="font-serif text-xl text-ink">Comment était votre commande ?</h2>
+              <div className="mt-3 flex justify-center">
+                <Stars value={note} onChange={setNote} size={32} />
+              </div>
+              <textarea
+                value={commentaire}
+                onChange={(e) => setCommentaire(e.target.value)}
+                placeholder="Un mot sur votre expérience (optionnel)…"
+                className="mx-auto mt-4 block min-h-[72px] w-full max-w-md rounded-[var(--radius)] border border-sand-deep px-3 py-2 text-sm focus:border-terracotta focus:outline-none"
+              />
+              <button
+                onClick={submitReview}
+                disabled={note < 1}
+                className="mt-3 inline-flex h-11 items-center justify-center rounded-full bg-terracotta px-6 font-medium text-cream hover:bg-terracotta-600 disabled:opacity-50"
+              >
+                Envoyer mon avis
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

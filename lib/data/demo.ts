@@ -8,17 +8,29 @@
 // ════════════════════════════════════════════════════════════════════
 
 import type {
+  Category,
   CategoryWithItems,
   CreateOrderInput,
+  HorairesSettings,
+  LivraisonSettings,
   MenuItem,
   OrderAdmin,
   OrderStatus,
+  PromoCode,
+  Review,
+  ServiceStatus,
+  StaffUser,
 } from "../types";
 import { MENU } from "../menu-data";
+import { DEFAULT_LIVRAISON, DEFAULT_HORAIRES, DEFAULT_SERVICE, DEFAULT_STAFF, DEFAULT_PROMOS } from "./settings-default";
 
 const ORDERS_KEY = "onishi:demo:orders";
 const COUNTER_KEY = "onishi:demo:counter";
 const MENU_KEY = "onishi:demo:menu-overrides";
+const SETTINGS_KEY = "onishi:demo:settings";
+const STAFF_KEY = "onishi:demo:staff-list";
+const PROMOS_KEY = "onishi:demo:promos";
+const REVIEWS_KEY = "onishi:demo:reviews";
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
@@ -93,8 +105,13 @@ export function createOrderDemo(input: CreateOrderInput): { id: string; token: s
     adresse: input.adresse,
     quartier: input.quartier,
     notes: input.notes,
+    latitude: input.latitude,
+    longitude: input.longitude,
+    note_interne: null,
+    code_promo: input.code_promo,
     sous_total: input.sous_total,
     frais_livraison: input.frais_livraison,
+    remise: input.remise,
     total: input.total,
     livreur_id: null,
     creee_le: now,
@@ -145,21 +162,33 @@ export function assignLivreurDemo(id: string, livreurId: string | null) {
   writeOrders(orders);
 }
 
+export function updateOrderNoteDemo(id: string, note: string | null) {
+  const orders = readOrders();
+  const o = orders.find((x) => x.id === id);
+  if (!o) return;
+  o.note_interne = note;
+  writeOrders(orders);
+}
+
 // ── Menu (overrides admin en démo) ──────────────────────────────────
 interface MenuOverrides {
   patched: Record<string, Partial<MenuItem>>;
   added: MenuItem[];
   removed: string[];
+  catPatched: Record<string, Partial<Category>>;
+  catAdded: Category[];
+  catRemoved: string[];
 }
 
 function readOverrides(): MenuOverrides {
-  if (typeof window === "undefined") return { patched: {}, added: [], removed: [] };
+  const empty: MenuOverrides = {
+    patched: {}, added: [], removed: [], catPatched: {}, catAdded: [], catRemoved: [],
+  };
+  if (typeof window === "undefined") return empty;
   try {
-    return JSON.parse(
-      localStorage.getItem(MENU_KEY) ?? '{"patched":{},"added":[],"removed":[]}'
-    ) as MenuOverrides;
+    return { ...empty, ...(JSON.parse(localStorage.getItem(MENU_KEY) ?? "{}") as MenuOverrides) };
   } catch {
-    return { patched: {}, added: [], removed: [] };
+    return empty;
   }
 }
 
@@ -171,13 +200,51 @@ function writeOverrides(o: MenuOverrides) {
 /** Menu effectif (seed + overrides) pour le mode démo. */
 export function getMenuDemo(): CategoryWithItems[] {
   const ov = readOverrides();
-  return MENU.map((cat) => {
-    const base = cat.items
-      .filter((i) => !ov.removed.includes(i.id))
-      .map((i) => ({ ...i, ...ov.patched[i.id] }));
-    const extra = ov.added.filter((i) => i.category_id === cat.id);
-    return { ...cat, items: [...base, ...extra] };
-  });
+  const cats = [
+    ...MENU.filter((c) => !ov.catRemoved.includes(c.id)).map((c) => ({ ...c, ...ov.catPatched[c.id] })),
+    ...ov.catAdded.map((c) => ({ ...c, items: [] as MenuItem[] })),
+  ];
+  return cats
+    .map((cat) => {
+      const base = (MENU.find((c) => c.id === cat.id)?.items ?? [])
+        .filter((i) => !ov.removed.includes(i.id))
+        .map((i) => ({ ...i, ...ov.patched[i.id] }));
+      const extra = ov.added.filter((i) => i.category_id === cat.id);
+      return { ...cat, items: [...base, ...extra] };
+    })
+    .sort((a, b) => a.ordre_affichage - b.ordre_affichage);
+}
+
+// ── Catégories (démo) ───────────────────────────────────────────────
+export function addCategoryDemo(nom: string): Category {
+  const ov = readOverrides();
+  const maxOrdre = Math.max(0, ...MENU.map((c) => c.ordre_affichage), ...ov.catAdded.map((c) => c.ordre_affichage));
+  const slug = nom
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  const cat: Category = { id: `cat-custom-${uid().slice(0, 8)}`, slug: slug || `cat-${uid().slice(0, 4)}`, nom, ordre_affichage: maxOrdre + 1 };
+  ov.catAdded.push(cat);
+  writeOverrides(ov);
+  return cat;
+}
+
+export function updateCategoryDemo(id: string, patch: Partial<Category>) {
+  const ov = readOverrides();
+  const i = ov.catAdded.findIndex((c) => c.id === id);
+  if (i >= 0) ov.catAdded[i] = { ...ov.catAdded[i], ...patch };
+  else ov.catPatched[id] = { ...ov.catPatched[id], ...patch };
+  writeOverrides(ov);
+}
+
+export function removeCategoryDemo(id: string) {
+  const ov = readOverrides();
+  const i = ov.catAdded.findIndex((c) => c.id === id);
+  if (i >= 0) ov.catAdded.splice(i, 1);
+  else if (!ov.catRemoved.includes(id)) ov.catRemoved.push(id);
+  writeOverrides(ov);
 }
 
 export function patchMenuItemDemo(id: string, patch: Partial<MenuItem>) {
@@ -211,9 +278,132 @@ export function removeMenuItemDemo(id: string) {
   writeOverrides(ov);
 }
 
+// ── Réglages (démo) ─────────────────────────────────────────────────
+function readSettings(): Record<string, unknown> {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}");
+  } catch {
+    return {};
+  }
+}
+
+export function getSettingDemo<T>(cle: string, fallback: T): T {
+  const v = readSettings()[cle];
+  return (v as T) ?? fallback;
+}
+
+export function setSettingDemo(cle: string, valeur: unknown) {
+  const s = readSettings();
+  s[cle] = valeur;
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+  emit();
+}
+
+// ── Personnel (démo) ────────────────────────────────────────────────
+function readStaff(): StaffUser[] {
+  if (typeof window === "undefined") return DEFAULT_STAFF;
+  try {
+    const raw = localStorage.getItem(STAFF_KEY);
+    return raw ? (JSON.parse(raw) as StaffUser[]) : DEFAULT_STAFF;
+  } catch {
+    return DEFAULT_STAFF;
+  }
+}
+
+function writeStaff(list: StaffUser[]) {
+  localStorage.setItem(STAFF_KEY, JSON.stringify(list));
+  emit();
+}
+
+export function listStaffDemo(): StaffUser[] {
+  return readStaff();
+}
+
+export function addStaffDemo(nom: string, role: StaffUser["role"]): StaffUser {
+  const s = readStaff();
+  const u: StaffUser = { id: `staff-${uid().slice(0, 8)}`, nom, role, actif: true };
+  writeStaff([...s, u]);
+  return u;
+}
+
+export function updateStaffDemo(id: string, patch: Partial<StaffUser>) {
+  writeStaff(readStaff().map((u) => (u.id === id ? { ...u, ...patch } : u)));
+}
+
+export function removeStaffDemo(id: string) {
+  writeStaff(readStaff().filter((u) => u.id !== id));
+}
+
+// ── Codes promo (démo) ──────────────────────────────────────────────
+function readPromos(): PromoCode[] {
+  if (typeof window === "undefined") return DEFAULT_PROMOS;
+  try {
+    const raw = localStorage.getItem(PROMOS_KEY);
+    return raw ? (JSON.parse(raw) as PromoCode[]) : DEFAULT_PROMOS;
+  } catch {
+    return DEFAULT_PROMOS;
+  }
+}
+
+function writePromos(list: PromoCode[]) {
+  localStorage.setItem(PROMOS_KEY, JSON.stringify(list));
+  emit();
+}
+
+export function listPromosDemo(): PromoCode[] {
+  return readPromos();
+}
+
+export function addPromoDemo(p: Omit<PromoCode, "id">): PromoCode {
+  const created: PromoCode = { ...p, id: `promo-${uid().slice(0, 8)}` };
+  writePromos([...readPromos(), created]);
+  return created;
+}
+
+export function updatePromoDemo(id: string, patch: Partial<PromoCode>) {
+  writePromos(readPromos().map((p) => (p.id === id ? { ...p, ...patch } : p)));
+}
+
+export function removePromoDemo(id: string) {
+  writePromos(readPromos().filter((p) => p.id !== id));
+}
+
+// ── Avis (démo) ─────────────────────────────────────────────────────
+function readReviews(): Review[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem(REVIEWS_KEY) ?? "[]") as Review[];
+  } catch {
+    return [];
+  }
+}
+
+export function listReviewsDemo(): Review[] {
+  return readReviews().sort((a, b) => new Date(b.creee_le).getTime() - new Date(a.creee_le).getTime());
+}
+
+export function addReviewDemo(orderToken: string, note: number, commentaire: string | null): boolean {
+  const order = readOrders().find((o) => o.token === orderToken);
+  if (!order) return false;
+  const reviews = readReviews();
+  const review: Review = {
+    id: uid(),
+    order_id: order.id,
+    numero: order.numero,
+    note,
+    commentaire,
+    client_nom: order.client_nom,
+    creee_le: new Date().toISOString(),
+  };
+  localStorage.setItem(REVIEWS_KEY, JSON.stringify([review, ...reviews]));
+  emit();
+  return true;
+}
+
 export function resetDemo() {
-  localStorage.removeItem(ORDERS_KEY);
-  localStorage.removeItem(MENU_KEY);
-  localStorage.removeItem(COUNTER_KEY);
+  [ORDERS_KEY, MENU_KEY, COUNTER_KEY, SETTINGS_KEY, STAFF_KEY, PROMOS_KEY, REVIEWS_KEY].forEach((k) =>
+    localStorage.removeItem(k)
+  );
   emit();
 }

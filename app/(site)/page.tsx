@@ -3,6 +3,7 @@ import { ArrowRight, Clock, MapPin, Sparkles, Truck, ShoppingBag } from "lucide-
 import { MENU, FEATURED_NAMES, findItemByName } from "@/lib/menu-data";
 import { MenuItemCard } from "@/components/site/menu-item-card";
 import { DishImage } from "@/components/site/dish-image";
+import { RestaurantJsonLd } from "@/components/seo/restaurant-jsonld";
 import { formatDh } from "@/lib/utils";
 import { HORAIRES_TEXTE } from "@/lib/data/settings-default";
 
@@ -15,6 +16,7 @@ export default function HomePage() {
 
   return (
     <>
+      <RestaurantJsonLd />
       {/* ── Hero ─────────────────────────────────────────────── */}
       <section className="relative overflow-hidden wave-bg bg-terracotta text-cream">
         <div className="mx-auto grid max-w-6xl items-center gap-10 px-6 py-16 sm:py-20 lg:grid-cols-2 lg:py-24">

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, ShieldCheck, ChefHat, Bike, Crown } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { homeFor } from "@/lib/permissions";
 import { LogoMark } from "@/components/brand/logo";
 import { Input, Label } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -38,7 +39,7 @@ export default function LoginPage() {
 
   function handleDemo(role: StaffRole) {
     signInDemo(role);
-    router.replace("/admin");
+    router.replace(homeFor(role));
   }
 
   return (

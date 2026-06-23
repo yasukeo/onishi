@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { cn } from "@/lib/utils";
+import { BLUR_DATA_URL } from "@/lib/blur";
 
 /**
  * Image de plat. Affiche la vraie photo si `src` est fournie (Supabase Storage
@@ -20,12 +21,19 @@ export function DishImage({
   sizes?: string;
 }) {
   if (src) {
+    // Les uploads en mode démo sont des data: URLs, non gérées par next/image.
+    if (src.startsWith("data:")) {
+      // eslint-disable-next-line @next/next/no-img-element
+      return <img src={src} alt={alt} className={cn("absolute inset-0 h-full w-full object-cover", className)} />;
+    }
     return (
       <Image
         src={src}
         alt={alt}
         fill
         sizes={sizes ?? "(max-width: 768px) 50vw, 320px"}
+        placeholder="blur"
+        blurDataURL={BLUR_DATA_URL}
         className={cn("object-cover", className)}
       />
     );

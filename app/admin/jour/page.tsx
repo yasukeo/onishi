@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { Loader2, TrendingUp, ShoppingBag, Bike, Store, Ban } from "lucide-react";
+import { Loader2, TrendingUp, ShoppingBag, Bike, Store, Ban, Printer } from "lucide-react";
 import { useOrders } from "@/lib/hooks/use-orders";
 import { StatusBadge } from "@/components/admin/status";
+import { printHtml, cashCloseHtml } from "@/lib/print";
 import { formatDh, formatHeure } from "@/lib/utils";
 
 function isToday(iso: string) {
@@ -30,11 +31,31 @@ export default function JourPage() {
 
   return (
     <div className="mx-auto max-w-4xl p-4 sm:p-6">
-      <header className="mb-6">
-        <h1 className="font-serif text-3xl text-ink">Vue du jour</h1>
-        <p className="text-sm text-ink-soft">
-          {new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
-        </p>
+      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="font-serif text-3xl text-ink">Vue du jour</h1>
+          <p className="text-sm text-ink-soft">
+            {new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
+          </p>
+        </div>
+        <button
+          onClick={() =>
+            printHtml(
+              cashCloseHtml({
+                date: new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" }),
+                nbCommandes: valides.length,
+                ca,
+                livraisons,
+                emporter,
+                annulees,
+                panierMoyen,
+              })
+            )
+          }
+          className="inline-flex h-10 items-center gap-2 rounded-full border border-sand-deep px-4 text-sm font-medium text-ink hover:bg-sand"
+        >
+          <Printer className="h-4 w-4" /> Clôture de caisse
+        </button>
       </header>
 
       {loading ? (

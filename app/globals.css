@@ -115,6 +115,29 @@
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
+/* ════════════════════════════════════════════════════════════════
+   Mode sombre de l'espace équipe (.admin-dark sur le conteneur).
+   On remappe les tokens neutres : toutes les utilitaires sand/ink
+   (y compris hover et opacité) basculent automatiquement.
+   ════════════════════════════════════════════════════════════════ */
+.admin-dark {
+  color-scheme: dark;
+  --color-sand: #15110e;        /* fond de page */
+  --color-sand-deep: #34291f;   /* bordures douces */
+  --color-ink: #f2e9dc;         /* texte principal */
+  --color-ink-soft: #b6a596;    /* texte secondaire */
+}
+/* Cartes blanches → surface sombre légèrement détachée du fond */
+.admin-dark .bg-white,
+.admin-dark .bg-white\/70,
+.admin-dark .bg-white\/60 { background-color: #211a15; }
+.admin-dark .bg-white\/45 { background-color: #1b1510; }
+
+/* L'écran cuisine (KDS) reste clair-sur-charbon, même en mode sombre */
+.admin-dark .bg-charcoal .bg-white { background-color: #ffffff; }
+.admin-dark .bg-charcoal .text-ink { color: #2a1d16; }
+.admin-dark .bg-charcoal .text-ink-soft { color: #5c4a3f; }
+
 /* Impression du ticket de commande (admin) : ne garder que #ticket */
 @media print {
   body * { visibility: hidden; }

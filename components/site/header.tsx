@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Menu as MenuIcon, ShoppingBag, X } from "lucide-react";
 import { LogoLockup } from "@/components/brand/logo";
 import { useCart } from "@/lib/store/cart";
+import { useCartUI } from "@/lib/store/cart-ui";
 import { useMounted } from "@/lib/hooks/use-mounted";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +21,7 @@ export function Header() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const count = useCart((s) => s.count());
+  const openCart = useCartUI((s) => s.openCart);
   const mounted = useMounted();
 
   return (
@@ -48,10 +50,10 @@ export function Header() {
         </nav>
 
         <div className="flex items-center gap-2">
-          <Link
-            href="/panier"
+          <button
+            onClick={openCart}
             className="relative inline-flex h-10 items-center gap-2 rounded-full bg-terracotta px-4 text-sm font-medium text-cream transition-colors hover:bg-terracotta-600"
-            aria-label="Voir le panier"
+            aria-label="Ouvrir le panier"
           >
             <ShoppingBag className="h-4 w-4" />
             <span className="hidden sm:inline">Panier</span>
@@ -60,7 +62,7 @@ export function Header() {
                 {count}
               </span>
             )}
-          </Link>
+          </button>
 
           <button
             className="inline-flex h-10 w-10 items-center justify-center rounded-full text-ink hover:bg-sand md:hidden"

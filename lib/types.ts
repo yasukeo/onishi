@@ -66,8 +66,12 @@ export interface CreateOrderInput {
   adresse: string | null;
   quartier: string | null;
   notes: string | null;
+  latitude: number | null;
+  longitude: number | null;
   sous_total: number;
   frais_livraison: number;
+  remise: number;
+  code_promo: string | null;
   total: number;
   items: OrderItemInput[];
 }
@@ -95,6 +99,7 @@ export interface OrderPublic {
   quartier: string | null;
   sous_total: number;
   frais_livraison: number;
+  remise: number;
   total: number;
   creee_le: string;
   maj_le: string;
@@ -107,7 +112,11 @@ export interface OrderAdmin extends OrderPublic {
   token: string;
   client_telephone: string;
   notes: string | null;
+  note_interne: string | null;
+  code_promo: string | null;
   livreur_id: string | null;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 export interface Quartier {
@@ -119,6 +128,63 @@ export interface LivraisonSettings {
   frais_par_defaut: number;
   minimum_commande: number;
   quartiers: Quartier[];
+}
+
+/** Créneau d'ouverture d'un jour (heures locales "HH:MM"). */
+export interface DayHoraire {
+  jour: string;       // "Lundi" … "Dimanche"
+  ouvert: boolean;
+  ouvre: string;      // "12:00"
+  ferme: string;      // "00:00" = minuit
+}
+
+export interface HorairesSettings {
+  texte: string;
+  ferme_le: string;
+  /** Planning hebdomadaire (Lundi→Dimanche) pour l'ouverture automatique. */
+  planning?: DayHoraire[];
+}
+
+export interface ServiceStatus {
+  /** Interrupteur manuel : false = service en pause (prioritaire sur le planning). */
+  ouvert: boolean;
+  message: string;
+}
+
+/** Délais estimés (minutes) pour le calcul de l'ETA client. */
+export interface EtaSettings {
+  preparation_min: number;
+  livraison_min: number;
+}
+
+export interface StaffUser {
+  id: string;
+  nom: string;
+  role: StaffRole;
+  actif: boolean;
+  email?: string | null;
+}
+
+export type PromoType = "pourcentage" | "montant";
+
+export interface PromoCode {
+  id: string;
+  code: string;
+  type: PromoType;
+  valeur: number;
+  min_commande: number;
+  actif: boolean;
+  expire_le: string | null;
+}
+
+export interface Review {
+  id: string;
+  order_id: string;
+  numero: number | null;
+  note: number;
+  commentaire: string | null;
+  client_nom: string | null;
+  creee_le: string;
 }
 
 export const STATUS_LABEL: Record<OrderStatus, string> = {

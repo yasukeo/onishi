@@ -3,13 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Bike, Store, Loader2, ArrowRight } from "lucide-react";
+import { Bike, Store, Loader2, ArrowRight, MapPin } from "lucide-react";
 import { useCart } from "@/lib/store/cart";
 import { useMounted } from "@/lib/hooks/use-mounted";
-import { getLivraisonSettings, createOrder } from "@/lib/data/api";
-import { DEFAULT_LIVRAISON } from "@/lib/data/settings-default";
-import type { LivraisonSettings, OrderType } from "@/lib/types";
+import { getLivraisonSettings, createOrder, validatePromo, getServiceStatus, getHoraires } from "@/lib/data/api";
+import { DEFAULT_LIVRAISON, DEFAULT_SERVICE, DEFAULT_HORAIRES } from "@/lib/data/settings-default";
+import { computeServiceState } from "@/lib/horaires";
+import type { HorairesSettings, LivraisonSettings, OrderType, ServiceStatus } from "@/lib/types";
 import { Input, Textarea, Label } from "@/components/ui/input";
+import { LocationPicker, type LatLng } from "@/components/site/location-picker";
+import { Tag, X, Check } from "lucide-react";
 import { formatDh, cn } from "@/lib/utils";
 
 export default function CommandePage() {
@@ -20,12 +23,20 @@ export default function CommandePage() {
   const clear = useCart((s) => s.clear);
 
   const [settings, setSettings] = useState<LivraisonSettings>(DEFAULT_LIVRAISON);
+  const [service, setService] = useState<ServiceStatus>(DEFAULT_SERVICE);
+  const [horaires, setHoraires] = useState<HorairesSettings>(DEFAULT_HORAIRES);
+  const [now, setNow] = useState(() => new Date());
   const [type, setType] = useState<OrderType>("livraison");
   const [quartier, setQuartier] = useState("");
   const [nom, setNom] = useState("");
   const [tel, setTel] = useState("");
   const [adresse, setAdresse] = useState("");
+  const [coords, setCoords] = useState<LatLng | null>(null);
+  const [showMap, setShowMap] = useState(false);
   const [notes, setNotes] = useState("");
+  const [promoInput, setPromoInput] = useState("");
+  const [promo, setPromo] = useState<{ code: string; remise: number } | null>(null);
+  const [promoMsg, setPromoMsg] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,7 +45,16 @@ export default function CommandePage() {
       setSettings(s);
       setQuartier(s.quartiers[0]?.nom ?? "");
     });
+    getServiceStatus().then(setService);
+    getHoraires().then(setHoraires);
+    const t = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(t);
   }, []);
+
+  const serviceState = useMemo(
+    () => computeServiceState(service, horaires, now),
+    [service, horaires, now]
+  );
 
   const frais = useMemo(() => {
     if (type === "emporter") return 0;
@@ -42,7 +62,20 @@ export default function CommandePage() {
     return q?.frais ?? settings.frais_par_defaut;
   }, [type, quartier, settings]);
 
-  const total = sousTotal + frais;
+  const remise = promo?.remise ?? 0;
+  const total = Math.max(0, sousTotal + frais - remise);
+
+  async function applyPromo() {
+    if (!promoInput.trim()) return;
+    const res = await validatePromo(promoInput, sousTotal);
+    if (res.ok) {
+      setPromo({ code: res.code, remise: res.remise });
+      setPromoMsg(res.message);
+    } else {
+      setPromo(null);
+      setPromoMsg(res.message);
+    }
+  }
   const sousMinimum = type === "livraison" && sousTotal < settings.minimum_commande;
 
   function validate(): string | null {
@@ -74,8 +107,12 @@ export default function CommandePage() {
         adresse: type === "livraison" ? adresse.trim() : null,
         quartier: type === "livraison" ? quartier : null,
         notes: notes.trim() || null,
+        latitude: type === "livraison" ? coords?.lat ?? null : null,
+        longitude: type === "livraison" ? coords?.lng ?? null : null,
         sous_total: sousTotal,
         frais_livraison: frais,
+        remise,
+        code_promo: promo?.code ?? null,
         total,
         items: lines.map((l) => ({
           menu_item_id: l.itemId,
@@ -88,8 +125,12 @@ export default function CommandePage() {
       clear();
       router.push(`/suivi/${token}`);
     } catch (err) {
-      console.error(err);
-      setError("Une erreur est survenue. Réessayez.");
+      const e = err as { message?: string; code?: string };
+      const msg = e?.message || (typeof err === "string" ? err : JSON.stringify(err));
+      console.error("Création de commande échouée:", msg, err);
+      // Les erreurs métier du serveur (RAISE EXCEPTION, code P0001) sont en français
+      // et destinées au client : on les affiche telles quelles.
+      setError(e?.code === "P0001" && e.message ? e.message : "Une erreur est survenue. Réessayez.");
       setSubmitting(false);
     }
   }
@@ -178,6 +219,24 @@ export default function CommandePage() {
                   placeholder="Rue, numéro, étage, points de repère…"
                 />
               </div>
+              <div>
+                {!showMap ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowMap(true)}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-terracotta/40 bg-terracotta/5 px-3 py-1.5 text-sm font-medium text-terracotta transition-colors hover:bg-terracotta/10"
+                  >
+                    <MapPin className="h-4 w-4" /> Préciser ma position sur la carte
+                    <span className="text-xs font-normal text-terracotta/70">(recommandé)</span>
+                  </button>
+                ) : (
+                  <LocationPicker
+                    value={coords}
+                    onChange={setCoords}
+                    onResolveAddress={(addr) => { if (!adresse.trim()) setAdresse(addr); }}
+                  />
+                )}
+              </div>
             </fieldset>
           )}
 
@@ -218,6 +277,45 @@ export default function CommandePage() {
                 </li>
               ))}
             </ul>
+            {/* Code promo */}
+            <div className="mt-4">
+              {promo ? (
+                <div className="flex items-center justify-between gap-2 rounded-lg bg-matcha/10 px-3 py-2 text-sm text-matcha">
+                  <span className="inline-flex items-center gap-1.5 font-medium">
+                    <Check className="h-4 w-4" /> {promo.code}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { setPromo(null); setPromoInput(""); setPromoMsg(null); }}
+                    className="rounded p-1 hover:bg-matcha/15"
+                    aria-label="Retirer le code"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Tag className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft/50" />
+                    <Input
+                      value={promoInput}
+                      onChange={(e) => setPromoInput(e.target.value)}
+                      placeholder="Code promo"
+                      className="pl-9 uppercase"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={applyPromo}
+                    className="shrink-0 rounded-[var(--radius)] border border-sand-deep px-3 text-sm font-medium text-ink hover:bg-sand"
+                  >
+                    Appliquer
+                  </button>
+                </div>
+              )}
+              {promoMsg && !promo && <p className="mt-1.5 text-xs text-terracotta-700">{promoMsg}</p>}
+            </div>
+
             <hr className="my-4 border-sand-deep" />
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between">
@@ -228,11 +326,23 @@ export default function CommandePage() {
                 <dt className="text-ink-soft">Livraison</dt>
                 <dd className="text-ink">{type === "emporter" ? "—" : formatDh(frais)}</dd>
               </div>
+              {remise > 0 && (
+                <div className="flex justify-between text-matcha">
+                  <dt>Remise{promo ? ` (${promo.code})` : ""}</dt>
+                  <dd>-{formatDh(remise)}</dd>
+                </div>
+              )}
               <div className="flex justify-between border-t border-sand-deep pt-2 text-base font-semibold">
                 <dt className="text-ink">Total</dt>
                 <dd className="text-terracotta">{formatDh(total)}</dd>
               </div>
             </dl>
+
+            {!serviceState.open && (
+              <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
+                {serviceState.message}
+              </p>
+            )}
 
             {sousMinimum && (
               <p className="mt-3 rounded-lg bg-ember/15 px-3 py-2 text-xs text-terracotta-700">
@@ -245,7 +355,7 @@ export default function CommandePage() {
 
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || !serviceState.open}
               className="mt-5 inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-terracotta font-medium text-cream hover:bg-terracotta-600 disabled:opacity-60"
             >
               {submitting ? (

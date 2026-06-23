@@ -4,11 +4,13 @@ import { useState } from "react";
 import { Check, Plus } from "lucide-react";
 import type { MenuItem } from "@/lib/types";
 import { useCart } from "@/lib/store/cart";
+import { useCartUI } from "@/lib/store/cart-ui";
 import { DishImage } from "./dish-image";
 import { formatDh, cn } from "@/lib/utils";
 
 export function MenuItemCard({ item, seed = 0 }: { item: MenuItem; seed?: number }) {
   const add = useCart((s) => s.add);
+  const openCart = useCartUI((s) => s.openCart);
   const [added, setAdded] = useState(false);
   const [opts, setOpts] = useState<Record<string, string>>(() =>
     Object.fromEntries(item.options.map((o) => [o.nom, o.choix[0]]))
@@ -19,6 +21,7 @@ export function MenuItemCard({ item, seed = 0 }: { item: MenuItem; seed?: number
   function handleAdd() {
     if (indisponible) return;
     add(item, opts);
+    openCart();
     setAdded(true);
     setTimeout(() => setAdded(false), 1200);
   }

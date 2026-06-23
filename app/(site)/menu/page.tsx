@@ -1,12 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import { Search, ShoppingBag } from "lucide-react";
 import { useMenu } from "@/lib/hooks/use-menu";
 import { useCart } from "@/lib/store/cart";
+import { useCartUI } from "@/lib/store/cart-ui";
 import { useMounted } from "@/lib/hooks/use-mounted";
 import { MenuItemCard } from "@/components/site/menu-item-card";
+import { MenuCardSkeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { formatDh, cn } from "@/lib/utils";
 
@@ -18,6 +19,7 @@ export default function MenuPage() {
   const mounted = useMounted();
   const count = useCart((s) => s.count());
   const sousTotal = useCart((s) => s.sousTotal());
+  const openCart = useCartUI((s) => s.openCart);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -80,7 +82,7 @@ export default function MenuPage() {
       {loading ? (
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-72 animate-pulse rounded-[var(--radius-lg)] bg-sand" />
+            <MenuCardSkeleton key={i} />
           ))}
         </div>
       ) : filtered.length === 0 ? (
@@ -112,12 +114,12 @@ export default function MenuPage() {
               <span className="font-semibold text-ink">{count} article{count > 1 ? "s" : ""}</span>
               <span className="text-ink-soft"> · {formatDh(sousTotal)}</span>
             </div>
-            <Link
-              href="/panier"
+            <button
+              onClick={openCart}
               className="inline-flex h-11 items-center gap-2 rounded-full bg-terracotta px-6 font-medium text-cream hover:bg-terracotta-600"
             >
               <ShoppingBag className="h-4 w-4" /> Voir le panier
-            </Link>
+            </button>
           </div>
         </div>
       )}

@@ -58,3 +58,22 @@ export function nextStatus(statut: OrderStatus): OrderStatus | null {
   if (i === -1 || i >= STATUS_FLOW.length - 1) return null;
   return STATUS_FLOW[i + 1];
 }
+
+/** Seuils SLA (minutes dans le statut courant avant alerte). */
+export const SLA_WARN: Partial<Record<OrderStatus, number>> = {
+  nouvelle: 5,
+  confirmee: 8,
+  en_preparation: 20,
+  en_livraison: 35,
+};
+
+export type SlaLevel = "ok" | "warn" | "late";
+
+/** Niveau d'urgence selon le temps écoulé dans le statut. */
+export function slaLevel(statut: OrderStatus, ageMin: number): SlaLevel {
+  const seuil = SLA_WARN[statut];
+  if (seuil === undefined) return "ok";
+  if (ageMin >= seuil * 2) return "late";
+  if (ageMin >= seuil) return "warn";
+  return "ok";
+}

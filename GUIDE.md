@@ -77,6 +77,33 @@ Les quartiers livrés et leurs frais sont **configurables** (jamais codés en du
 
 ---
 
+## Fonctionnalités avancées de l'admin
+
+La barre latérale est organisée en trois groupes (visibles selon votre rôle) :
+
+**Opérations**
+- **Commandes** — kanban temps réel. En haut : recherche (n°/nom/téléphone), filtre livraison/à emporter, **Service ouvert/fermé** (coupe la prise de commande sur le site), **Notif.** (alertes navigateur même hors onglet), **Son**, **Auto** (impression automatique de chaque nouvelle commande). Les cartes passent en **orange puis rouge** quand une commande attend trop longtemps (alerte SLA).
+- **Cuisine** — affichage plein écran type « écran de cuisine » : grandes cartes, 3 colonnes (Nouvelle → Confirmée → En préparation), pensé pour un écran au-dessus du plan de travail.
+- **Livraisons** *(livreur)* — uniquement les commandes à livrer, avec **itinéraire Google Maps**, **appel** du client en un clic, et boutons « En route » / « Livré ».
+
+**Suivi**
+- **Historique** — toutes les commandes : recherche, filtres (statut/type/période), **export CSV**, et **actions groupées** (cochez plusieurs commandes → changer leur statut d'un coup).
+- **Vue du jour** — stats du jour + bouton **Clôture de caisse** imprimable.
+- **Statistiques** *(gérant)* — CA et affluence par jour/heure, **meilleures ventes**, panier moyen, taux d'annulation (7 ou 30 jours).
+- **Clients** *(gérant)* — historique agrégé par téléphone (nombre de commandes, total dépensé).
+- **Avis** — notes et commentaires laissés par les clients après livraison.
+
+**Configuration** *(gérant)*
+- **Menu** — plats (ajout/édition/disponibilité/**photo**) **et catégories** (ajout, renommage, réordonnancement, suppression).
+- **Codes promo** — créez des remises (% ou montant) avec minimum de commande ; le client les saisit au checkout.
+- **Personnel** — ajoutez des membres et changez leurs rôles (en démo : complet ; en prod : créez le compte dans Supabase Auth puis `make_staff()`).
+- **Réglages** — statut du service, horaires, et **zone de livraison** (quartiers + frais + minimum) éditable.
+
+## Côté client (nouveau)
+- **Code promo** appliqué dans le récapitulatif de commande.
+- **Avis** : une fois la commande « livrée », le client peut noter et commenter depuis sa page de suivi.
+- Si le **service est fermé**, un bandeau l'indique et la commande est bloquée.
+
 ## Questions fréquentes
 
 **Le son ne marche pas ?** Cliquez une fois dans la page : les navigateurs bloquent le son

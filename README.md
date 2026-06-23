@@ -40,10 +40,12 @@ Sans variables d'environnement, l'app tourne en **mode démo** :
 
 ## Stack
 
-- **Next.js 15** (App Router) · **TypeScript** strict
+- **Next.js 16** (App Router, Turbopack) · **TypeScript** strict
+- **PWA** : installable, écran hors-ligne, service worker (cache de l'app shell)
 - **Tailwind v4** · composants UI maison (style shadcn, sans dépendance lourde)
 - **Zustand** (panier persistant en localStorage)
 - **Framer Motion** (animations sobres, `prefers-reduced-motion` respecté)
+- **Leaflet / OpenStreetMap** : sélection de la position exacte du client (sans clé API)
 - **Supabase** : Postgres + Auth (staff) + Realtime — *optionnel en démo, requis en prod*
 - **lucide-react** (icônes) · **Vercel** (déploiement)
 
@@ -58,15 +60,24 @@ app/
     menu/            Carte filtrable + ajout panier
     panier/          Panier
     commande/        Checkout : livraison/emporter → formulaire → confirmation
-    suivi/[token]/   Suivi de commande temps réel (lien unique)
+    suivi/[token]/   Suivi temps réel + heure d'arrivée estimée (ETA) + avis
     localisation/    Carte, horaires, zone de livraison, contact
     a-propos/        Histoire & valeurs
   admin/
     login/           Connexion (rôles en démo, email/mot de passe avec Supabase)
-    page.tsx         Tableau kanban temps réel + alerte sonore/visuelle
-    commandes/[id]/  Détail commande : statut, historique, livreur, impression ticket
-    menu/            Gestion du menu (rôle admin)
-    jour/            Vue du jour : chiffre, nombre de commandes, panier moyen
+    page.tsx         Kanban temps réel : recherche/filtres, SLA, notif., pause service, auto-print
+    cuisine/         Affichage cuisine plein écran (KDS)
+    livraisons/      Vue livreur : itinéraire, appel, « livré »
+    commandes/[id]/  Détail : statut, historique, livreur, note interne, ticket
+    historique/      Archives : recherche, filtres, export CSV, actions groupées
+    jour/            Vue du jour + clôture de caisse imprimable
+    stats/           Statistiques : CA, affluence, top plats, taux d'annulation
+    clients/         Clients agrégés par téléphone
+    avis/            Avis clients
+    menu/            Gestion menu : plats + catégories + upload photo (admin)
+    promos/          Codes promo (admin)
+    personnel/       Gestion du staff & rôles (admin)
+    reglages/        Service, horaires auto (planning), délais ETA, zone livraison (admin)
 lib/
   data/              Couche données unifiée (Supabase OU démo localStorage)
   store/cart.ts      Panier Zustand
@@ -91,6 +102,23 @@ contrasté** : une commande se lit en 2 secondes en cuisine.
 ---
 
 ## Passer en mode Supabase
+
+> ✅ **Déjà configuré pour ce projet.** Un projet Supabase « onishi » (org onishi,
+> région `eu-west-1`) a été créé, les **migrations 0001→0011 appliquées**, le menu seedé
+> (29 plats avec photos), le bucket Storage `menu` créé, et le `.env.local` rempli.
+> Il reste **une seule action manuelle** : créer le 1er compte staff (voir
+> « Créer le premier admin » ci-dessous). Pour repartir de zéro ou recréer ailleurs,
+> suivez les étapes génériques qui suivent.
+
+### Créer le premier admin
+1. Supabase → **Authentication → Users → Add user** : saisissez un email + mot de passe
+   (cochez « Auto Confirm User »).
+2. Supabase → **SQL Editor**, exécutez (adaptez l'email/nom) :
+   ```sql
+   select make_staff('admin@onishi.ma', 'Gérant', 'admin');
+   ```
+3. Lancez `npm run dev` et connectez-vous sur `/admin/login` avec cet email + mot de passe.
+
 
 1. Créez un projet sur [supabase.com](https://supabase.com).
 2. Copiez `.env.example` → `.env.local` et renseignez :
@@ -120,6 +148,10 @@ contrasté** : une commande se lit en 2 secondes en cuisine.
 - Un **client anonyme** peut *créer* une commande, mais ne lit **que la sienne**, via une
   fonction `get_order_by_token()` (token UUID non devinable). Il ne peut jamais lister les
   commandes des autres.
+- **Montants recalculés côté serveur** (`create_order`, migration 0010) : prix des plats,
+  frais de livraison, code promo et total sont recomposés depuis la base — le total envoyé
+  par le client est ignoré. Une commande hors horaires, service en pause, ou sous le minimum
+  est **refusée par le serveur**.
 - Le **staff authentifié** accède selon son rôle (`admin` / `employe` / `livreur`).
 - Aucune table sans policy. La clé `service_role` n'est **jamais** côté client.
 - Le **paiement** est à la livraison/au retrait (cash) en v1 ; le schéma prévoit déjà les
@@ -173,3 +205,24 @@ les horaires, le 3ᵉ Onishi Deal (« Tonno »), l'adresse exacte et le téléph
 
 Importez le repo sur Vercel, ajoutez les variables `NEXT_PUBLIC_SUPABASE_*` (Production),
 déployez. Pensez à configurer les URLs de redirection Auth dans Supabase.
+
+## Checklist mise en production
+
+**Déjà fait dans le code / la base :**
+- ✅ Montants **recalculés côté serveur** + refus hors horaires / service en pause / sous le minimum (`create_order`, migrations 0010-0011).
+- ✅ **Anti-spam** : max 5 commandes / 10 min par téléphone (côté serveur).
+- ✅ Durcissement DB : index sur clés étrangères, RLS optimisée, fonctions internes hors API (migration 0011).
+- ✅ **SEO** : `sitemap.xml`, `robots.txt` (admin/suivi exclus), image Open Graph, **JSON-LD Restaurant**.
+- ✅ **PWA** installable + hors-ligne.
+
+**À faire avant d'ouvrir (hors code) :**
+1. **Déployer sur Vercel + domaine HTTPS** (obligatoire pour PWA / géoloc / service worker).
+2. Variables d'env Production : `NEXT_PUBLIC_SUPABASE_*`, **`NEXT_PUBLIC_SITE_URL`**, `NEXT_PUBLIC_RESTAURANT_PHONE`, `NEXT_PUBLIC_MAPTILER_KEY` (cf. `.env.example`).
+3. **Créer le 1er compte admin** (voir « Créer le premier admin »).
+4. Supabase **Auth** : Site URL + Redirect URLs = domaine prod ; SMTP (réinit. mot de passe) ; **activer la protection mots de passe compromis**.
+5. **Plan Supabase Pro** (sinon mise en pause après inactivité + pas de sauvegardes/PITR).
+6. **Valider le contenu** : menu, prix, **horaires**, **adresse + téléphone** (placeholders dans `lib/site.ts`).
+7. Remplacer les **photos** Higgsfield par les vraies.
+8. **Mentions légales / CGV / confidentialité** (collecte nom, téléphone, adresse, GPS).
+
+**Recommandé ensuite :** notifications client WhatsApp/SMS · paiement en ligne (CMI) · monitoring (Sentry) + analytics · tests E2E + CI.

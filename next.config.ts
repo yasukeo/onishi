@@ -1,9 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // La maquette ne fournit pas de config ESLint dédiée : on n'échoue pas le
-  // build dessus (le typage TypeScript strict reste, lui, vérifié).
-  eslint: { ignoreDuringBuilds: true },
+  // Next 16 n'exécute plus ESLint au build (le typage TypeScript strict reste vérifié).
   images: {
     remotePatterns: [
       // Photos hébergées sur Supabase Storage (production)

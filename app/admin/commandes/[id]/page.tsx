@@ -3,13 +3,16 @@
 import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowLeft, Bike, Store, Phone, Clock, Printer, Loader2, XCircle, Check, User,
+  ArrowLeft, Bike, Store, Phone, Clock, Printer, Loader2, XCircle, Check, User, MapPin,
 } from "lucide-react";
-import { getOrderById, updateOrderStatus, assignLivreur, subscribeOrders } from "@/lib/data/api";
-import type { OrderAdmin, OrderStatus } from "@/lib/types";
+import { getOrderById, updateOrderStatus, assignLivreur, updateOrderNote, listLivreurs, subscribeOrders } from "@/lib/data/api";
+import type { OrderAdmin, OrderStatus, StaffUser } from "@/lib/types";
 import { STATUS_LABEL, STATUS_FLOW } from "@/lib/types";
 import { StatusBadge, nextStatus } from "@/components/admin/status";
+import { WhatsappButton } from "@/components/admin/whatsapp-button";
 import { useAuth } from "@/lib/auth";
+import { can } from "@/lib/permissions";
+import { printHtml, ticketHtml } from "@/lib/print";
 import { formatDh, formatDateHeure, formatHeure, cn } from "@/lib/utils";
 
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -19,16 +22,21 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [livreur, setLivreur] = useState("");
+  const [livreurs, setLivreurs] = useState<StaffUser[]>([]);
+  const [noteInterne, setNoteInterne] = useState("");
+  const [noteSaved, setNoteSaved] = useState(false);
 
   const load = useCallback(async () => {
     const o = await getOrderById(id);
     setOrder(o);
     setLivreur(o?.livreur_id ?? "");
+    setNoteInterne(o?.note_interne ?? "");
     setLoading(false);
   }, [id]);
 
   useEffect(() => {
     load();
+    listLivreurs().then(setLivreurs);
     return subscribeOrders(load);
   }, [load]);
 
@@ -39,11 +47,21 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     setBusy(false);
   }
 
-  async function saveLivreur() {
+  async function saveLivreur(value: string) {
+    setLivreur(value);
     setBusy(true);
-    await assignLivreur(id, livreur.trim() || null);
+    await assignLivreur(id, value || null);
     await load();
     setBusy(false);
+  }
+
+  async function saveNote() {
+    setBusy(true);
+    await updateOrderNote(id, noteInterne.trim() || null);
+    await load();
+    setBusy(false);
+    setNoteSaved(true);
+    setTimeout(() => setNoteSaved(false), 1500);
   }
 
   if (loading) {
@@ -66,10 +84,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   }
 
   const next = nextStatus(order.statut);
-  const canEdit = session?.role === "admin" || session?.role === "employe";
+  const canEdit = session ? can.editOrder(session.role) : false;
 
   return (
-    <div className="mx-auto max-w-5xl p-4 sm:p-6">
+    <div className="mx-auto max-w-5xl animate-fade-up p-4 sm:p-6">
       <Link href="/admin" className="mb-4 inline-flex items-center gap-1.5 text-sm text-ink-soft hover:text-ink print:hidden">
         <ArrowLeft className="h-4 w-4" /> Tableau des commandes
       </Link>
@@ -106,6 +124,16 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 {order.type === "livraison" ? order.quartier ?? "—" : "Retrait sur place"}
               </p>
               {order.adresse && <p className="text-sm text-ink-soft">{order.adresse}</p>}
+              {order.latitude != null && order.longitude != null && (
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${order.latitude},${order.longitude}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1.5 inline-flex items-center gap-1.5 text-sm font-medium text-terracotta hover:underline print:hidden"
+                >
+                  <MapPin className="h-4 w-4" /> Itinéraire (position GPS)
+                </a>
+              )}
             </div>
           </div>
 
@@ -147,6 +175,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <dt className="text-ink-soft">Sous-total</dt>
               <dd className="text-ink">{formatDh(order.sous_total)}</dd>
             </div>
+            {order.remise > 0 && (
+              <div className="flex justify-between text-matcha">
+                <dt>Remise{order.code_promo ? ` (${order.code_promo})` : ""}</dt>
+                <dd>-{formatDh(order.remise)}</dd>
+              </div>
+            )}
             {order.frais_livraison > 0 && (
               <div className="flex justify-between">
                 <dt className="text-ink-soft">Livraison</dt>
@@ -193,26 +227,58 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             </div>
           )}
 
+          {canEdit && (
+            <div className="rounded-[var(--radius-lg)] border border-sand-deep bg-white p-4">
+              <h2 className="mb-2 font-semibold text-ink">Prévenir le client</h2>
+              <WhatsappButton order={order} className="w-full" />
+              <p className="mt-2 text-xs text-ink-soft">
+                Ouvre WhatsApp avec un message pré-rempli (#{order.numero}, statut actuel, lien de suivi).
+              </p>
+            </div>
+          )}
+
           {canEdit && order.type === "livraison" && (
             <div className="rounded-[var(--radius-lg)] border border-sand-deep bg-white p-4">
-              <h2 className="mb-2 font-semibold text-ink">Livreur</h2>
-              <div className="flex gap-2">
-                <input
-                  value={livreur}
-                  onChange={(e) => setLivreur(e.target.value)}
-                  placeholder="Nom / id du livreur"
-                  className="h-10 flex-1 rounded-[var(--radius)] border border-sand-deep px-3 text-sm focus:border-terracotta focus:outline-none"
-                />
-                <button onClick={saveLivreur} disabled={busy} className="inline-flex h-10 items-center rounded-[var(--radius)] bg-ink px-3 text-sm font-medium text-cream hover:bg-charcoal">
-                  <Check className="h-4 w-4" />
-                </button>
-              </div>
+              <h2 className="mb-2 font-semibold text-ink">Livreur assigné</h2>
+              <select
+                value={livreur}
+                onChange={(e) => saveLivreur(e.target.value)}
+                disabled={busy}
+                className="h-10 w-full rounded-[var(--radius)] border border-sand-deep bg-white px-3 text-sm focus:border-terracotta focus:outline-none"
+              >
+                <option value="">— Non assigné —</option>
+                {livreurs.map((l) => (
+                  <option key={l.id} value={l.id}>{l.nom}</option>
+                ))}
+              </select>
+              {livreurs.length === 0 && (
+                <p className="mt-1.5 text-xs text-ink-soft">Aucun livreur. Ajoutez-en dans « Personnel ».</p>
+              )}
+            </div>
+          )}
+
+          {canEdit && (
+            <div className="rounded-[var(--radius-lg)] border border-sand-deep bg-white p-4">
+              <h2 className="mb-2 font-semibold text-ink">Note interne</h2>
+              <textarea
+                value={noteInterne}
+                onChange={(e) => setNoteInterne(e.target.value)}
+                placeholder="Visible par l'équipe uniquement (ex. client VIP, rappeler…)"
+                className="min-h-[72px] w-full rounded-[var(--radius)] border border-sand-deep px-3 py-2 text-sm focus:border-terracotta focus:outline-none"
+              />
+              <button
+                onClick={saveNote}
+                disabled={busy}
+                className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-full bg-charcoal px-3 text-sm font-medium text-cream hover:opacity-90"
+              >
+                {noteSaved ? <Check className="h-4 w-4" /> : null} {noteSaved ? "Enregistrée" : "Enregistrer la note"}
+              </button>
             </div>
           )}
 
           <div className="rounded-[var(--radius-lg)] border border-sand-deep bg-white p-4">
             <button
-              onClick={() => window.print()}
+              onClick={() => printHtml(ticketHtml(order))}
               className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border border-sand-deep font-medium text-ink hover:bg-sand"
             >
               <Printer className="h-4 w-4" /> Imprimer le ticket

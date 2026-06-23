@@ -9,15 +9,27 @@
 import { getSupabaseBrowser } from "../supabase/client";
 import { isSupabaseConfigured } from "../supabase/config";
 import type {
+  Category,
   CategoryWithItems,
   CreateOrderInput,
+  EtaSettings,
+  HorairesSettings,
   LivraisonSettings,
   MenuItem,
   OrderAdmin,
   OrderPublic,
   OrderStatus,
+  PromoCode,
+  Review,
+  ServiceStatus,
+  StaffUser,
 } from "../types";
-import { DEFAULT_LIVRAISON } from "./settings-default";
+import {
+  DEFAULT_LIVRAISON,
+  DEFAULT_HORAIRES,
+  DEFAULT_SERVICE,
+  DEFAULT_ETA,
+} from "./settings-default";
 import * as demo from "./demo";
 
 // ── Commandes ───────────────────────────────────────────────────────
@@ -27,35 +39,37 @@ export async function createOrder(
   const sb = getSupabaseBrowser();
   if (!sb) return demo.createOrderDemo(input);
 
-  const { data: order, error } = await sb
-    .from("orders")
-    .insert({
+  // Un client anonyme peut créer une commande mais ne peut pas la relire (RLS).
+  // On passe donc par une fonction SECURITY DEFINER qui insère commande + lignes
+  // et renvoie { id, token } sans exposer la table orders en lecture.
+  const { data, error } = await sb.rpc("create_order", {
+    payload: {
       type: input.type,
       client_nom: input.client_nom,
       client_telephone: input.client_telephone,
       adresse: input.adresse,
       quartier: input.quartier,
       notes: input.notes,
+      latitude: input.latitude,
+      longitude: input.longitude,
       sous_total: input.sous_total,
       frais_livraison: input.frais_livraison,
+      remise: input.remise,
+      code_promo: input.code_promo,
       total: input.total,
-    })
-    .select("id, token")
-    .single();
-  if (error || !order) throw error ?? new Error("Création de commande impossible");
+      items: input.items.map((i) => ({
+        menu_item_id: i.menu_item_id,
+        nom: i.nom,
+        quantite: i.quantite,
+        prix_unitaire: i.prix_unitaire,
+        options_choisies: i.options_choisies,
+      })),
+    },
+  });
+  if (error || !data) throw error ?? new Error("Création de commande impossible");
 
-  const items = input.items.map((i) => ({
-    order_id: order.id,
-    menu_item_id: i.menu_item_id.startsWith("itm-") ? null : i.menu_item_id,
-    nom: i.nom,
-    quantite: i.quantite,
-    prix_unitaire: i.prix_unitaire,
-    options_choisies: i.options_choisies,
-  }));
-  const { error: itemsError } = await sb.from("order_items").insert(items);
-  if (itemsError) throw itemsError;
-
-  return { id: order.id as string, token: order.token as string };
+  const res = data as { id: string; token: string };
+  return { id: res.id, token: res.token };
 }
 
 export async function getOrderByToken(token: string): Promise<OrderPublic | null> {
@@ -119,6 +133,24 @@ export async function assignLivreur(id: string, livreurId: string | null): Promi
   if (error) throw error;
 }
 
+export async function updateOrderNote(id: string, note: string | null): Promise<void> {
+  const sb = getSupabaseBrowser();
+  if (!sb) return demo.updateOrderNoteDemo(id, note);
+  const { error } = await sb.from("orders").update({ note_interne: note }).eq("id", id);
+  if (error) throw error;
+}
+
+/** Avance plusieurs commandes d'un coup (actions groupées). */
+export async function bulkUpdateStatus(ids: string[], statut: OrderStatus): Promise<void> {
+  const sb = getSupabaseBrowser();
+  if (!sb) {
+    ids.forEach((id) => demo.updateOrderStatusDemo(id, statut));
+    return;
+  }
+  const { error } = await sb.from("orders").update({ statut }).in("id", ids);
+  if (error) throw error;
+}
+
 /**
  * S'abonne aux changements de commandes (realtime). Renvoie une fonction de
  * désabonnement. Le callback est appelé à chaque insert/update.
@@ -176,12 +208,182 @@ export async function removeMenuItem(id: string): Promise<void> {
   if (error) throw error;
 }
 
-// ── Réglages ────────────────────────────────────────────────────────
-export async function getLivraisonSettings(): Promise<LivraisonSettings> {
+// ── Catégories ──────────────────────────────────────────────────────
+export async function addCategory(nom: string, ordre: number): Promise<void> {
   const sb = getSupabaseBrowser();
-  if (!sb) return DEFAULT_LIVRAISON;
-  const { data } = await sb.from("settings").select("valeur").eq("cle", "livraison").single();
-  return (data?.valeur as LivraisonSettings) ?? DEFAULT_LIVRAISON;
+  if (!sb) {
+    demo.addCategoryDemo(nom);
+    return;
+  }
+  const slug = nom.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const { error } = await sb.from("categories").insert({ nom, slug: slug || `cat-${Date.now()}`, ordre_affichage: ordre });
+  if (error) throw error;
+}
+
+export async function updateCategory(id: string, patch: Partial<Category>): Promise<void> {
+  const sb = getSupabaseBrowser();
+  if (!sb) return demo.updateCategoryDemo(id, patch);
+  const { error } = await sb.from("categories").update(patch).eq("id", id);
+  if (error) throw error;
+}
+
+export async function removeCategory(id: string): Promise<void> {
+  const sb = getSupabaseBrowser();
+  if (!sb) return demo.removeCategoryDemo(id);
+  const { error } = await sb.from("categories").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// ── Upload photo (Supabase Storage en prod, data URL en démo) ───────
+export async function uploadPhoto(file: File): Promise<string> {
+  const sb = getSupabaseBrowser();
+  if (!sb) {
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+  const ext = file.name.split(".").pop() ?? "jpg";
+  const path = `plats/${crypto.randomUUID()}.${ext}`;
+  const { error } = await sb.storage.from("menu").upload(path, file, { upsert: true });
+  if (error) throw error;
+  const { data } = sb.storage.from("menu").getPublicUrl(path);
+  return data.publicUrl;
+}
+
+// ── Réglages (table settings, clé/valeur jsonb) ─────────────────────
+async function getSetting<T>(cle: string, fallback: T): Promise<T> {
+  const sb = getSupabaseBrowser();
+  if (!sb) return demo.getSettingDemo<T>(cle, fallback);
+  const { data } = await sb.from("settings").select("valeur").eq("cle", cle).single();
+  return (data?.valeur as T) ?? fallback;
+}
+
+async function setSetting(cle: string, valeur: unknown): Promise<void> {
+  const sb = getSupabaseBrowser();
+  if (!sb) return demo.setSettingDemo(cle, valeur);
+  const { error } = await sb.from("settings").upsert({ cle, valeur, maj_le: new Date().toISOString() });
+  if (error) throw error;
+}
+
+export const getLivraisonSettings = () => getSetting<LivraisonSettings>("livraison", DEFAULT_LIVRAISON);
+export const setLivraisonSettings = (v: LivraisonSettings) => setSetting("livraison", v);
+export const getHoraires = () => getSetting<HorairesSettings>("horaires", DEFAULT_HORAIRES);
+export const setHoraires = (v: HorairesSettings) => setSetting("horaires", v);
+export const getServiceStatus = () => getSetting<ServiceStatus>("service", DEFAULT_SERVICE);
+export const setServiceStatus = (v: ServiceStatus) => setSetting("service", v);
+export const getEtaSettings = () => getSetting<EtaSettings>("eta", DEFAULT_ETA);
+export const setEtaSettings = (v: EtaSettings) => setSetting("eta", v);
+
+// ── Personnel ───────────────────────────────────────────────────────
+export async function listStaff(): Promise<StaffUser[]> {
+  const sb = getSupabaseBrowser();
+  if (!sb) return demo.listStaffDemo();
+  const { data } = await sb.from("staff_users").select("id, nom, role, actif").order("nom");
+  return (data as StaffUser[]) ?? [];
+}
+
+export async function addStaff(nom: string, role: StaffUser["role"]): Promise<{ error: string | null }> {
+  const sb = getSupabaseBrowser();
+  if (!sb) {
+    demo.addStaffDemo(nom, role);
+    return { error: null };
+  }
+  // En prod, le compte Auth se crée dans Supabase (Auth → Add user), puis make_staff().
+  return { error: "En production, créez le compte dans Supabase Auth puis utilisez make_staff()." };
+}
+
+export async function updateStaff(id: string, patch: Partial<StaffUser>): Promise<void> {
+  const sb = getSupabaseBrowser();
+  if (!sb) return demo.updateStaffDemo(id, patch);
+  const { error } = await sb.from("staff_users").update(patch).eq("id", id);
+  if (error) throw error;
+}
+
+export async function removeStaff(id: string): Promise<void> {
+  const sb = getSupabaseBrowser();
+  if (!sb) return demo.removeStaffDemo(id);
+  const { error } = await sb.from("staff_users").update({ actif: false }).eq("id", id);
+  if (error) throw error;
+}
+
+export async function listLivreurs(): Promise<StaffUser[]> {
+  return (await listStaff()).filter((s) => s.role === "livreur" && s.actif);
+}
+
+// ── Codes promo ─────────────────────────────────────────────────────
+export async function listPromos(): Promise<PromoCode[]> {
+  const sb = getSupabaseBrowser();
+  if (!sb) return demo.listPromosDemo();
+  const { data } = await sb.from("promo_codes").select("*").order("code");
+  return (data as PromoCode[]) ?? [];
+}
+
+export async function addPromo(p: Omit<PromoCode, "id">): Promise<void> {
+  const sb = getSupabaseBrowser();
+  if (!sb) {
+    demo.addPromoDemo(p);
+    return;
+  }
+  const { error } = await sb.from("promo_codes").insert(p);
+  if (error) throw error;
+}
+
+export async function updatePromo(id: string, patch: Partial<PromoCode>): Promise<void> {
+  const sb = getSupabaseBrowser();
+  if (!sb) return demo.updatePromoDemo(id, patch);
+  const { error } = await sb.from("promo_codes").update(patch).eq("id", id);
+  if (error) throw error;
+}
+
+export async function removePromo(id: string): Promise<void> {
+  const sb = getSupabaseBrowser();
+  if (!sb) return demo.removePromoDemo(id);
+  const { error } = await sb.from("promo_codes").delete().eq("id", id);
+  if (error) throw error;
+}
+
+/** Valide un code promo et calcule la remise applicable. */
+export async function validatePromo(
+  code: string,
+  sousTotal: number
+): Promise<{ ok: boolean; remise: number; message: string; code: string }> {
+  const promos = await listPromos();
+  const p = promos.find((x) => x.code.toUpperCase() === code.trim().toUpperCase());
+  if (!p) return { ok: false, remise: 0, message: "Code inconnu.", code };
+  if (!p.actif) return { ok: false, remise: 0, message: "Code inactif.", code };
+  if (p.expire_le && new Date(p.expire_le) < new Date())
+    return { ok: false, remise: 0, message: "Code expiré.", code };
+  if (sousTotal < p.min_commande)
+    return { ok: false, remise: 0, message: `Minimum ${p.min_commande} dh pour ce code.`, code };
+  const remise =
+    p.type === "pourcentage" ? Math.round((sousTotal * p.valeur) / 100) : Math.min(p.valeur, sousTotal);
+  return { ok: true, remise, message: `Code ${p.code} appliqué.`, code: p.code };
+}
+
+// ── Avis clients ────────────────────────────────────────────────────
+export async function listReviews(): Promise<Review[]> {
+  const sb = getSupabaseBrowser();
+  if (!sb) return demo.listReviewsDemo();
+  const { data } = await sb.from("reviews").select("*").order("creee_le", { ascending: false });
+  return (data as Review[]) ?? [];
+}
+
+export async function addReview(
+  orderToken: string,
+  note: number,
+  commentaire: string | null
+): Promise<boolean> {
+  const sb = getSupabaseBrowser();
+  if (!sb) return demo.addReviewDemo(orderToken, note, commentaire);
+  const { error } = await sb.rpc("add_review_by_token", {
+    p_token: orderToken,
+    p_note: note,
+    p_commentaire: commentaire,
+  });
+  return !error;
 }
 
 export { isSupabaseConfigured };
