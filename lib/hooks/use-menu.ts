@@ -2,8 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getMenu } from "../data/api";
-import { isSupabaseConfigured } from "../supabase/config";
-import { subscribeDemo } from "../data/demo";
 import type { CategoryWithItems } from "../types";
 
 export function useMenu() {
@@ -18,7 +16,6 @@ export function useMenu() {
 
   useEffect(() => {
     reload();
-    if (!isSupabaseConfigured) return subscribeDemo(reload);
   }, [reload]);
 
   return { menu, loading, reload };

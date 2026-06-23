@@ -88,7 +88,7 @@ export interface StatusEvent {
   horodatage: string;
 }
 
-/** Vue "suivi client" (renvoyée par get_order_by_token / mode démo). */
+/** Vue "suivi client" (renvoyée par get_order_by_token). */
 export interface OrderPublic {
   id: string;
   numero: number;

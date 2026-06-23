@@ -3,9 +3,7 @@ import type {
   EtaSettings,
   HorairesSettings,
   LivraisonSettings,
-  PromoCode,
   ServiceStatus,
-  StaffUser,
 } from "../types";
 
 /** Réglages livraison par défaut (miroir de 0003_seed.sql). Modifiables en admin. */
@@ -45,19 +43,5 @@ export const DEFAULT_ETA: EtaSettings = {
   preparation_min: 25,
   livraison_min: 20,
 };
-
-/** Personnel de démo (en prod : table staff_users via Supabase Auth). */
-export const DEFAULT_STAFF: StaffUser[] = [
-  { id: "staff-admin", nom: "Gérant", role: "admin", actif: true },
-  { id: "staff-cuisine", nom: "Cuisine", role: "employe", actif: true },
-  { id: "staff-livreur-1", nom: "Youssef (livreur)", role: "livreur", actif: true },
-  { id: "staff-livreur-2", nom: "Karim (livreur)", role: "livreur", actif: true },
-];
-
-/** Codes promo de démo. */
-export const DEFAULT_PROMOS: PromoCode[] = [
-  { id: "promo-bienvenue", code: "BIENVENUE10", type: "pourcentage", valeur: 10, min_commande: 100, actif: true, expire_le: null },
-  { id: "promo-livraison", code: "LIVRAISON", type: "montant", valeur: 15, min_commande: 150, actif: true, expire_le: null },
-];
 
 export const HORAIRES_TEXTE = DEFAULT_HORAIRES.texte;

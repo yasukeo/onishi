@@ -1,14 +1,16 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { SUPABASE_ANON_KEY, SUPABASE_URL, isSupabaseConfigured } from "./config";
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./config";
 
 /**
  * Client Supabase côté serveur (RSC / Route Handlers). Lit/écrit les cookies
- * de session pour l'auth staff. Retourne null en MODE DÉMO.
+ * de session pour l'auth staff. Supabase est requis (plus de mode démo).
  */
-export async function getSupabaseServer(): Promise<SupabaseClient | null> {
-  if (!isSupabaseConfigured) return null;
+export async function getSupabaseServer(): Promise<SupabaseClient> {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    throw new Error("Supabase non configuré (NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY).");
+  }
   const cookieStore = await cookies();
 
   return createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {

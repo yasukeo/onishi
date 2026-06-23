@@ -3,8 +3,6 @@
 import { useEffect, useState } from "react";
 import { Loader2, MessageSquare } from "lucide-react";
 import { listReviews } from "@/lib/data/api";
-import { subscribeDemo } from "@/lib/data/demo";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { Stars } from "@/components/ui/stars";
 import type { Review } from "@/lib/types";
 import { formatDateHeure } from "@/lib/utils";
@@ -14,9 +12,7 @@ export default function AvisPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const load = () => listReviews().then((r) => { setReviews(r); setLoading(false); });
-    load();
-    if (!isSupabaseConfigured) return subscribeDemo(load);
+    listReviews().then((r) => { setReviews(r); setLoading(false); });
   }, []);
 
   const moyenne = reviews.length ? reviews.reduce((s, r) => s + r.note, 0) / reviews.length : 0;

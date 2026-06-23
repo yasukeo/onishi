@@ -21,7 +21,7 @@ export function DishImage({
   sizes?: string;
 }) {
   if (src) {
-    // Les uploads en mode démo sont des data: URLs, non gérées par next/image.
+    // Les data: URLs (rares) ne passent pas par next/image.
     if (src.startsWith("data:")) {
       // eslint-disable-next-line @next/next/no-img-element
       return <img src={src} alt={alt} className={cn("absolute inset-0 h-full w-full object-cover", className)} />;

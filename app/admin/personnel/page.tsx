@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Plus, Trash2, Crown, ChefHat, Bike } from "lucide-react";
+import { Loader2, Plus, Crown, ChefHat, Bike } from "lucide-react";
 import { useAuth, ROLE_LABEL } from "@/lib/auth";
-import { listStaff, addStaff, updateStaff, removeStaff } from "@/lib/data/api";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { listStaff, addStaff, updateStaff } from "@/lib/data/api";
 import type { StaffRole, StaffUser } from "@/lib/types";
 import { Input, Label } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -32,7 +31,7 @@ export default function PersonnelPage() {
 
   async function add() {
     if (!nom.trim()) return;
-    const { error } = await addStaff(nom.trim(), role);
+    const { error } = await addStaff();
     if (error) { setError(error); return; }
     setError(null);
     setNom("");
@@ -65,11 +64,10 @@ export default function PersonnelPage() {
           <Button onClick={add}><Plus className="mr-1 h-4 w-4" /> Ajouter</Button>
         </div>
         {error && <p className="mt-3 rounded-lg bg-ember/15 px-3 py-2 text-xs text-terracotta-700">{error}</p>}
-        {isSupabaseConfigured && (
-          <p className="mt-2 text-xs text-ink-soft">
-            En production : créez d&apos;abord le compte dans Supabase (Authentication → Add user), puis <code>make_staff()</code>.
-          </p>
-        )}
+        <p className="mt-2 text-xs text-ink-soft">
+          Les comptes sont liés à Supabase Auth : créez d&apos;abord le compte (Authentication → Add user),
+          puis exécutez <code>make_staff(&apos;email&apos;,&apos;Nom&apos;,&apos;role&apos;)</code> dans le SQL Editor.
+        </p>
       </div>
 
       {loading ? (
@@ -102,15 +100,6 @@ export default function PersonnelPage() {
                 >
                   {u.actif ? "Désactiver" : "Réactiver"}
                 </button>
-                {!isSupabaseConfigured && (
-                  <button
-                    onClick={() => { if (confirm("Supprimer ce membre ?")) removeStaff(u.id).then(reload); }}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:bg-red-50 hover:text-red-600"
-                    aria-label="Supprimer"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                )}
               </li>
             );
           })}

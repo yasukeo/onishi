@@ -1,6 +1,5 @@
 import { Header } from "@/components/site/header";
 import { Footer } from "@/components/site/footer";
-import { DemoBanner } from "@/components/site/demo-banner";
 import { ServiceBanner } from "@/components/site/service-banner";
 import { CartDrawer } from "@/components/site/cart-drawer";
 
@@ -13,7 +12,6 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
       >
         Aller au contenu
       </a>
-      <DemoBanner />
       <ServiceBanner />
       <Header />
       <main id="contenu" className="flex-1">{children}</main>

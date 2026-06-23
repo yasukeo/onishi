@@ -3,13 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence, MotionConfig } from "framer-motion";
 import {
-  Bell, BellOff, Loader2, RotateCcw, Search, Printer, Power, BellRing, Inbox,
+  Bell, BellOff, Loader2, Search, Printer, Power, BellRing, Inbox,
 } from "lucide-react";
 import { useOrders } from "@/lib/hooks/use-orders";
 import { useAuth } from "@/lib/auth";
 import { updateOrderStatus, getServiceStatus, setServiceStatus } from "@/lib/data/api";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { resetDemo } from "@/lib/data/demo";
 import { DEFAULT_SERVICE } from "@/lib/data/settings-default";
 import { playChime } from "@/lib/sound";
 import { ensureNotifyPermission, notify, notifyEnabled } from "@/lib/notify";
@@ -188,14 +186,6 @@ export default function DashboardPage() {
               <ToolButton active={autoPrint} onClick={() => setAutoPrint((v) => !v)} title="Imprimer chaque nouvelle commande">
                 <Printer className="h-4 w-4" /> <span className="hidden sm:inline">Auto</span>
               </ToolButton>
-              {!isSupabaseConfigured && (
-                <ToolButton
-                  onClick={() => { if (confirm("Réinitialiser les données de démo ?")) { resetDemo(); reload(); } }}
-                  title="Réinitialiser la démo"
-                >
-                  <RotateCcw className="h-4 w-4" />
-                </ToolButton>
-              )}
             </div>
           </div>
 
@@ -238,11 +228,7 @@ export default function DashboardPage() {
               <Inbox className="h-8 w-8 text-terracotta/70" />
             </div>
             <p className="mt-4 font-serif text-2xl text-ink">Aucune commande pour l&apos;instant</p>
-            <p className="mt-1 text-sm">
-              {isSupabaseConfigured
-                ? "Les nouvelles commandes apparaîtront ici en temps réel."
-                : "Passez une commande depuis le site (mode démo) pour la voir arriver ici."}
-            </p>
+            <p className="mt-1 text-sm">Les nouvelles commandes apparaîtront ici en temps réel.</p>
           </div>
         ) : (
           <div className="flex flex-1 gap-3.5 overflow-x-auto p-4 sm:px-6">

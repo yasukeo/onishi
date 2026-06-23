@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { ArrowRight, Clock, MapPin, Sparkles, Truck, ShoppingBag } from "lucide-react";
-import { MENU, FEATURED_NAMES, findItemByName } from "@/lib/menu-data";
-import { MenuItemCard } from "@/components/site/menu-item-card";
 import { DishImage } from "@/components/site/dish-image";
+import { FeaturedDishes } from "@/components/site/featured-dishes";
+import { HomeDeals } from "@/components/site/home-deals";
 import { RestaurantJsonLd } from "@/components/seo/restaurant-jsonld";
 import { formatDh } from "@/lib/utils";
 import { HORAIRES_TEXTE } from "@/lib/data/settings-default";
@@ -11,9 +11,6 @@ const MAPS_URL =
   "https://www.google.com/maps/place/Onishi/@33.9406475,-6.8983935,18z/data=!4m6!3m5!1s0xda713b471b89103:0x35c222edc95891e6!8m2!3d33.9407112!4d-6.8984887";
 
 export default function HomePage() {
-  const featured = FEATURED_NAMES.map(findItemByName).filter(Boolean).slice(0, 3);
-  const deals = MENU.find((c) => c.slug === "onishi-deals")?.items ?? [];
-
   return (
     <>
       <RestaurantJsonLd />
@@ -76,57 +73,13 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── Onishi Deals ─────────────────────────────────────── */}
-      <section className="mx-auto max-w-6xl px-6 py-16">
-        <div className="flex items-end justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium uppercase tracking-[0.2em] text-terracotta">
-              Les incontournables
-            </p>
-            <h2 className="mt-1 font-serif text-3xl text-ink sm:text-4xl">Onishi Deals</h2>
-          </div>
-          <Link
-            href="/menu"
-            className="hidden items-center gap-1 text-sm font-medium text-terracotta hover:gap-2 sm:inline-flex"
-          >
-            Toute la carte <ArrowRight className="h-4 w-4" />
-          </Link>
-        </div>
-
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {deals.map((d, i) => (
-            <Link
-              key={d.id}
-              href="/menu"
-              className="group relative overflow-hidden rounded-[var(--radius-lg)] border border-sand-deep bg-white/70"
-            >
-              <div className="relative aspect-[16/10]">
-                <DishImage src={d.photo_url} alt={d.nom} seed={i + 2} className="h-full w-full transition-transform duration-500 group-hover:scale-105" />
-              </div>
-              <div className="p-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-serif text-xl text-ink">{d.nom}</h3>
-                  <span className="font-semibold text-terracotta">{formatDh(d.prix)}</span>
-                </div>
-                {d.description && <p className="mt-1 text-sm text-ink-soft">{d.description}</p>}
-              </div>
-            </Link>
-          ))}
-        </div>
-      </section>
+      {/* ── Onishi Deals (depuis le menu réel) ───────────────── */}
+      <HomeDeals />
 
       <div className="wave-divider" />
 
-      {/* ── Sélection ────────────────────────────────────────── */}
-      <section className="mx-auto max-w-6xl px-6 py-16">
-        <h2 className="font-serif text-3xl text-ink sm:text-4xl">La sélection du chef</h2>
-        <p className="mt-1 max-w-lg text-ink-soft">
-          Un aperçu de nos créations. Ajoutez-les directement à votre panier.
-        </p>
-        <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {featured.map((item, i) => item && <MenuItemCard key={item.id} item={item} seed={i} />)}
-        </div>
-      </section>
+      {/* ── Sélection (depuis le menu réel) ──────────────────── */}
+      <FeaturedDishes />
 
       {/* ── Histoire + localisation ──────────────────────────── */}
       <section className="bg-sand">

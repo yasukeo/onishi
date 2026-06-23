@@ -8,7 +8,6 @@ import {
   patchMenuItem, addMenuItem, removeMenuItem,
   addCategory, updateCategory, removeCategory, uploadPhoto,
 } from "@/lib/data/api";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { MenuItem, CategoryWithItems } from "@/lib/types";
 import { Input, Textarea, Label } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -63,11 +62,6 @@ export default function AdminMenuPage() {
         <p className="text-sm text-ink-soft">
           Ajoutez, modifiez ou désactivez un plat, son prix et sa disponibilité.
         </p>
-        {!isSupabaseConfigured && (
-          <p className="mt-2 inline-block rounded-lg bg-ember/15 px-3 py-1.5 text-xs text-terracotta-700">
-            Mode démo : les modifications restent dans ce navigateur. Connectez Supabase pour les rendre publiques et persistantes.
-          </p>
-        )}
       </header>
 
       {!loading && (
